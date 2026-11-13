@@ -1,10 +1,16 @@
 # 数据分析与挖掘实训：心血管患病预测
 
-## 项目简介
+## 技术栈
+Python 3
+pandas：数据读取、描述性统计、预处理、哑变量处理
+numpy：数值计算（新增 BMI 特征）
+matplotlib + seaborn：直方图、饼图、条形图、核密度曲线、箱线图、散点图、热力图
+sklearn：逻辑回归、随机森林、梯度提升树、KNN、SVM，MinMaxScaler 离差标准化，GridSearchCV 网格搜索
 
-数据文件 `cardio_train.csv` 是心血管疾病调查数据，共 1000 行（含表头）、13 列。`心血管患病预测.ipynb` 完成数据读取、可视化探索、清洗、特征处理、相关性分析和多模型分类对比，最后用网格搜索调参。
+## 数据来源
+数据来自 Kaggle 公开的 Cardiovascular Disease 数据集。共 70000 条记录，其中心血管疾病患者 34979 人，未患病 35021 人，三类特征、12 个输入字段 + 1 个目标字段。
 
-## 数据说明
+## 字段说明
 
 | 列名 | 含义 |
 | --- | --- |
@@ -24,36 +30,76 @@
 
 ## Notebook 分析流程
 
-1. 读取与概览：`head`、`shape`、`columns`、`dtypes`、`info`、`describe`。
-2. 探索性可视化：年龄、身高、体重、血压的直方图；胆固醇分布饼图；血糖分布条形图；年龄、性别与患病情况的计数图。
-3. 预处理：
-   - 年龄由天换算为年（除以 365 后取整）。
-   - 剔除身高小于 140 cm 或体重小于 40 kg 的记录。
-   - 把收缩压限制在 60 至 250、舒张压限制在 30 至 180，剔除超出范围的记录。
-   - 新增 BMI 特征：体重除以身高的平方米。
-   - 检查缺失值并尝试去重、去缺失。
-4. 特征编码：对 `gender`、`cholesterol`、`gluc`、`smoke`、`alco` 做哑变量处理（`pd.get_dummies`）。
-5. 相关性分析：计算相关系数矩阵，绘制带掩码的热力图。
-6. 建模：用 `MinMaxScaler` 归一化，按 8:2 划分训练集与测试集，依次训练并输出分类报告和准确率。
-   - 逻辑回归（L2，C=0.6，liblinear，类别平衡）
-   - 随机森林（100 棵树）
-   - 梯度提升树（100 棵，学习率 0.1，最大深度 4）
-   - K 近邻（k=10）
-   - 支持向量机（RBF，gamma='auto'）
-7. 调参：用 `GridSearchCV` 以 `roc_auc` 为评分、5 折交叉验证，依次搜索 `n_estimators`、`max_features`、`max_depth`，最后按最优参数重训梯度提升树并评估。
+### 1. 数据读取与展示
 
+在 Jupyter Notebook 中用 `pd.read_csv` 读取，查看字段类型、数据形状（70000 行 × 13 列）、describe 描述性统计。
 
-## 环境与依赖
+### 2. 可视化探索性分析
 
-- Python 3.x，Jupyter Notebook 或 JupyterLab
-- `pandas`、`numpy`
-- `matplotlib`、`seaborn`
-- `scikit-learn`
+使用多种图表从不同角度观察数据：
+
+- **离散型特征分布直方图**：age、gender、cholesterol、gluc
+- **胆固醇水平饼图**：正常人群占 74.8%
+- **血糖浓度条形图**：超出和大量超出正常水平约占七分之一
+- **年龄直方图**：区间 30–65 岁，50–60 岁人数最多
+- **身高/体重/血压核密度曲线**
+- **年龄+性别分组条形图**：随年龄增加患病比例上升，性别影响不大
+- **身高-体重散点图、分组箱线图**
+- **相关性系数热力图**：患病与收缩压、年龄、BMI、体重相关性较强
+
+### 3. 数据预处理
+
+- 年龄字段：`age = round(age / 365)` 天转年
+- 剔除身高、体重异常值：身高 < 140cm 且体重 < 40kg，剔除 198 条
+- 剔除血压异常值：收缩压限定 `[60, 250]`，舒张压限定 `[30, 180]`，剔除 1215 条
+- 去重：`drop_duplicates()`
+- 哑变量处理：gender、cholesterol、gluc、smoke、alco 做 `pd.get_dummies`
+- 离差标准化：`MinMaxScaler`
+- 新增特征：`BMI = weight / (height/100)²`
+- 数据集划分：`train_test_split`，测试集占 20%，`random_state=2`
+
+### 4. 模型构建
+
+| 模型 | 实现 | 关键参数 |
+| --- | --- | --- |
+| 逻辑回归 | `LogisticRegression` | penalty=l2，C=0.6，solver=liblinear，class_weight=balanced |
+| 随机森林 | `RandomForestClassifier` | n_estimators=100，random_state=42 |
+| 梯度提升树 | `GradientBoostingClassifier` | n_estimators=100，learning_rate=0.1，max_depth=4 |
+| KNN | `KNeighborsClassifier` | n_neighbors=10 |
+| SVM | `SVC` | gamma=auto |
+
+### 5. 模型评估
+
+| 模型 | F1 | 准确率 |
+| --- | --- | --- |
+| 逻辑回归 | 0.73 | 72.83% |
+| 随机森林 | 0.72 | 71.88% |
+| 梯度提升树 | 0.74 | 73.58% |
+
+梯度提升树效果最好，对其做进一步优化。
+
+### 6. 网格搜索调参
+
+使用 `GridSearchCV`（`scoring='roc_auc'`，五折交叉验证），依次搜索 n_estimators、max_features、max_depth 以及三者联合空间，找到最优参数后重新训练。
+
+## 项目结论
+
+- **GBDT 是三种模型中效果最好的**，准确率 73.58%，F1 为 0.74。
+- 对患病诊断影响较大的特征：**收缩压 ap_hi、年龄 age、体重指数 BMI、体重 weight**。
+- 可视化遇到离散型数据难以直接画图时，可以先用 `value_counts()` 分类，再用饼图、条形图展示。
+- GridSearchCV 中 scoring 参数必须显式指定为 `roc_auc`，否则返回的准确率可能为负数。
 
 ## 运行方式
 
+1. 安装依赖：
+
 ```bash
-pip install pandas numpy matplotlib seaborn scikit-learn jupyter
+pip install pandas numpy matplotlib seaborn scikit-learn
+```
+
+2. 打开 Jupyter Notebook：
+
+```bash
 jupyter notebook 心血管患病预测.ipynb
 ```
 
